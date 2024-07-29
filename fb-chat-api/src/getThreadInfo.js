@@ -10,7 +10,6 @@ function formatEventReminders(reminder) {
 		time: reminder.time,
 		eventType: reminder.lightweight_event_type.toLowerCase(),
 		locationName: reminder.location_name,
-		// @TODO verify this
 		locationCoordinates: reminder.location_coordinates,
 		locationPage: reminder.location_page,
 		eventStatus: reminder.lightweight_event_status.toLowerCase(),
@@ -31,23 +30,20 @@ function formatEventReminders(reminder) {
 }
 
 function formatThreadGraphQLResponse(data) {
-	if (data.errors)
-		return data.errors;
+	if (data.errors) return data.errors;
 	const messageThread = data.message_thread;
-	if (!messageThread)
-		return null;
+	if (!messageThread) return null;
 	const threadID = messageThread.thread_key.thread_fbid
 		? messageThread.thread_key.thread_fbid
 		: messageThread.thread_key.other_user_id;
 
-	// Remove me
 	const lastM = messageThread.last_message;
 	const snippetID =
 		lastM &&
-			lastM.nodes &&
-			lastM.nodes[0] &&
-			lastM.nodes[0].message_sender &&
-			lastM.nodes[0].message_sender.messaging_actor
+		lastM.nodes &&
+		lastM.nodes[0] &&
+		lastM.nodes[0].message_sender &&
+		lastM.nodes[0].message_sender.messaging_actor
 			? lastM.nodes[0].message_sender.messaging_actor.id
 			: null;
 	const snippetText =
@@ -73,7 +69,7 @@ function formatThreadGraphQLResponse(data) {
 			gender: d.node.messaging_actor.gender,
 			type: d.node.messaging_actor.__typename,
 			isFriend: d.node.messaging_actor.is_viewer_friend,
-			isBirthday: !!d.node.messaging_actor.is_birthday //not sure?
+			isBirthday: !!d.node.messaging_actor.is_birthday
 		})),
 		unreadCount: messageThread.unread_count,
 		messageCount: messageThread.messages_count,
@@ -92,20 +88,20 @@ function formatThreadGraphQLResponse(data) {
 			: null,
 		color:
 			messageThread.customization_info &&
-				messageThread.customization_info.outgoing_bubble_color
+			messageThread.customization_info.outgoing_bubble_color
 				? messageThread.customization_info.outgoing_bubble_color.slice(2)
 				: null,
 		threadTheme: messageThread.thread_theme,
 		nicknames:
 			messageThread.customization_info &&
-				messageThread.customization_info.participant_customizations
+			messageThread.customization_info.participant_customizations
 				? messageThread.customization_info.participant_customizations.reduce(
-					function (res, val) {
-						if (val.nickname) res[val.participant_id] = val.nickname;
-						return res;
-					},
-					{}
-				)
+						function (res, val) {
+							if (val.nickname) res[val.participant_id] = val.nickname;
+							return res;
+						},
+						{}
+				  )
 				: {},
 		adminIDs: messageThread.thread_admins,
 		approvalMode: Boolean(messageThread.approval_mode),
@@ -113,16 +109,12 @@ function formatThreadGraphQLResponse(data) {
 			inviterID: a.inviter.id,
 			requesterID: a.requester.id,
 			timestamp: a.request_timestamp,
-			request_source: a.request_source // @Undocumented
+			request_source: a.request_source
 		})),
-
-		// @Undocumented
 		reactionsMuteMode: messageThread.reactions_mute_mode.toLowerCase(),
 		mentionsMuteMode: messageThread.mentions_mute_mode.toLowerCase(),
 		isPinProtected: messageThread.is_pin_protected,
 		relatedPageThread: messageThread.related_page_thread,
-
-		// @Legacy
 		name: messageThread.name,
 		snippet: snippetText,
 		snippetSender: snippetID,
@@ -141,8 +133,6 @@ function formatThreadGraphQLResponse(data) {
 		lastMessageType: "message",
 		lastReadTimestamp: lastReadTimestamp,
 		threadType: messageThread.thread_type == "GROUP" ? 2 : 1,
-
-		// update in Wed, 13 Jul 2022 19:41:12 +0700
 		inviteLink: {
 			enable: messageThread.joinable_mode ? messageThread.joinable_mode.mode == 1 : false,
 			link: messageThread.joinable_mode ? messageThread.joinable_mode.link : null
@@ -151,9 +141,9 @@ function formatThreadGraphQLResponse(data) {
 }
 
 module.exports = function (defaultFuncs, api, ctx) {
-	return function getThreadInfoGraphQL(threadID, callback) {
-		let resolveFunc = function () { };
-		let rejectFunc = function () { };
+	return async function getThreadInfoGraphQL(threadID, callback) {
+		let resolveFunc = function () {};
+		let rejectFunc = function () {};
 		const returnPromise = new Promise(function (resolve, reject) {
 			resolveFunc = resolve;
 			rejectFunc = reject;
@@ -173,8 +163,6 @@ module.exports = function (defaultFuncs, api, ctx) {
 		}
 
 		let form = {};
-		// `queries` has to be a string. I couldn't tell from the dev console. This
-		// took me a really long time to figure out. I deserve a cookie for this.
 		threadID.map(function (t, i) {
 			form["o" + i] = {
 				doc_id: "3449967031715030",
@@ -197,28 +185,20 @@ module.exports = function (defaultFuncs, api, ctx) {
 			.post("https://www.facebook.com/api/graphqlbatch/", ctx.jar, form)
 			.then(utils.parseAndCheckLogin(ctx, defaultFuncs))
 			.then(function (resData) {
-
 				if (resData.error) {
 					throw resData;
 				}
-				// This returns us an array of things. The last one is the success /
-				// failure one.
-				// @TODO What do we do in this case?
-				// if (resData[resData.length - 1].error_results !== 0) {
-				// 	throw resData[0].o0.errors[0];
-				// }
-				// if (!resData[0].o0.data.message_thread) {
-				// 	throw new Error("can't find this thread");
-				// }
 				const threadInfos = {};
 				for (let i = resData.length - 2; i >= 0; i--) {
-					const threadInfo = formatThreadGraphQLResponse(resData[i][Object.keys(resData[i])[0]].data);
-					threadInfos[threadInfo?.threadID || threadID[threadID.length - 1 - i]] = threadInfo;
+					const threadInfo = formatThreadGraphQLResponse(
+						resData[i][Object.keys(resData[i])[0]].data
+					);
+					threadInfos[threadInfo?.threadID || threadID[threadID.length - 1 - i]] =
+						threadInfo;
 				}
 				if (Object.values(threadInfos).length == 1) {
 					callback(null, Object.values(threadInfos)[0]);
-				}
-				else {
+				} else {
 					callback(null, threadInfos);
 				}
 			})
